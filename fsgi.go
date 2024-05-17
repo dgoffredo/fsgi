@@ -16,6 +16,11 @@ import (
 )
 
 func main() {
+	opts, err := parseCommandLine(os.Args)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	workDir, err := os.MkdirTemp("", "")
 	if err != nil {
 		log.Fatal(err)
@@ -23,16 +28,34 @@ func main() {
 	defer os.RemoveAll(workDir)
 
 	s := http.Server{
-		// TODO
-		Addr: "127.0.0.1:8998",
+		Addr: opts.Listen,
 		Handler: &requestHandler{
-			// TODO
-			Command: []string{"/home/david/src/fsgi/examples/cowsay/respond"},
+			Command: opts.Command,
 			WorkDir: workDir,
 		},
 	}
 	log.Println("going to listen on", s.Addr)
 	log.Fatal(s.ListenAndServe())
+}
+
+func parseCommandLine(args []string) (options, error) {
+	var opts options
+	usage := "usage: <listen> -- <command> [<arg> ...]"
+	// <server> <listen> "--" <command> [<arg> ... ]
+	if len(args) < 4 {
+		return opts, fmt.Errorf("wrong number of arguments. %s\n", usage)
+	}
+	if args[2] != "--" {
+		return opts, fmt.Errorf("use \"--\" to separate listen interface from command. %s\n", usage)
+	}
+	opts.Listen = args[1]
+	opts.Command = args[3:]
+	return opts, nil
+}
+
+type options struct {
+	Listen  string
+	Command []string
 }
 
 type requestHandler struct {
@@ -115,15 +138,22 @@ func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	body, err := os.OpenFile(filepath.Join(rDir, "body"), os.O_CREATE|os.O_RDWR, fPerm)
+	if err != nil {
+		writeServerError(w, 500, "unable to create request/body file\n")
+		return
+	}
+	io.Copy(body, r.Body)
+
 	// The "request/" directory is ready.
 	// Create the "response/" directory and its subdirectories, and then invoke
 	// the request handling program.
 
-	// response directory
+	// response/headers/ directory
 	rDir = filepath.Join(dir, "response")
 	err = os.MkdirAll(filepath.Join(rDir, "headers"), dPerm)
 	if err != nil {
-		writeServerError(w, 500, "unable to create response/headers directory\n")
+		writeServerError(w, 500, "unable to create response/headers/ directory\n")
 		return
 	}
 
