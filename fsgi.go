@@ -1,39 +1,59 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
 func main() {
-	s := http.Server{
-		Addr:    "127.0.0.1:8998",
-		Handler: requestHandler{},
+	workDir, err := os.MkdirTemp("", "")
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer os.RemoveAll(workDir)
+
+	s := http.Server{
+		// TODO
+		Addr: "127.0.0.1:8998",
+		Handler: &requestHandler{
+			// TODO
+			Command: []string{"/home/david/src/fsgi/examples/cowsay/respond"},
+			WorkDir: workDir,
+		},
+	}
+	log.Println("going to listen on", s.Addr)
 	log.Fatal(s.ListenAndServe())
 }
 
-type requestHandler struct{}
+type requestHandler struct {
+	Command []string
+	WorkDir string
+}
 
-func (requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	dir, err := os.MkdirTemp("", "")
+func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	dir, err := os.MkdirTemp(h.WorkDir, "")
 	if err != nil {
 		writeServerError(w, 500, "unable to create temporary directory\n")
 		return
 	}
-	// TODO defer os.RemoveAll(dir)
+	defer os.RemoveAll(dir)
 
 	// file permission for directories
 	var dPerm fs.FileMode = 0750
 	// file permission for regular files
 	var fPerm fs.FileMode = 0640
 
+	// request directory
 	rDir := filepath.Join(dir, "request")
 
 	err = os.MkdirAll(filepath.Join(rDir, "headers"), dPerm)
@@ -95,8 +115,73 @@ func (requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Add("Content-Type", "text/plain")
-	w.Write([]byte(dir + "\n")) // TODO
+	// The "request/" directory is ready.
+	// Create the "response/" directory and its subdirectories, and then invoke
+	// the request handling program.
+
+	// response directory
+	rDir = filepath.Join(dir, "response")
+	err = os.MkdirAll(filepath.Join(rDir, "headers"), dPerm)
+	if err != nil {
+		writeServerError(w, 500, "unable to create response/headers directory\n")
+		return
+	}
+
+	child := exec.Command(h.Command[0], h.Command[1:]...)
+	child.Dir = dir
+	err = child.Run()
+	if err != nil {
+		writeServerError(w, 502, fmt.Sprintf("request handler failed: %v\n", err))
+		return
+	}
+
+	// Examine any files created by the request handling program, and deliver the
+	// resulting response.
+
+	// response/status
+	var status int
+	statusRaw, err := os.ReadFile(filepath.Join(rDir, "status"))
+	if err == nil {
+		status, err = strconv.Atoi(string(statusRaw))
+		if err != nil {
+			writeServerError(w, 500, "unable to parse response status\n")
+			return
+		}
+	} else if errors.Is(err, os.ErrNotExist) {
+		status = 200
+	} else {
+		writeServerError(w, 500, "unable to read response/status file\n")
+		return
+	}
+
+	// response/headers/
+	hDir := filepath.Join(rDir, "headers")
+	entries, err := os.ReadDir(hDir)
+	if err != nil {
+		writeServerError(w, 500, "unable to read response/headers/ directory\n")
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		value, err := os.ReadFile(filepath.Join(hDir, name))
+		if err != nil {
+			writeServerError(w, 500, fmt.Sprintf("unable to read %s response header\n", name))
+			return
+		}
+		w.Header().Add(entry.Name(), string(value))
+	}
+
+	// response/body
+	bodyFile, err := os.Open(filepath.Join(rDir, "body"))
+	if err == nil {
+		w.WriteHeader(status)
+		io.Copy(w, bodyFile)
+	} else if errors.Is(err, os.ErrNotExist) {
+		w.WriteHeader(status)
+	} else {
+		writeServerError(w, 500, "unable to read response/body file\n")
+		return
+	}
 }
 
 func writeServerError(w http.ResponseWriter, status int, message string) {
