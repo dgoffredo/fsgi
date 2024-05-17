@@ -193,6 +193,9 @@ func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
+		if http.CanonicalHeaderKey(name) == "Content-Length" {
+			continue
+		}
 		value, err := os.ReadFile(filepath.Join(hDir, name))
 		if err != nil {
 			writeServerError(w, 500, fmt.Sprintf("unable to read %s response header\n", name))
