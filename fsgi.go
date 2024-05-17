@@ -43,10 +43,10 @@ func parseCommandLine(args []string) (options, error) {
 	usage := "usage: <listen> -- <command> [<arg> ...]"
 	// <server> <listen> "--" <command> [<arg> ... ]
 	if len(args) < 4 {
-		return opts, fmt.Errorf("wrong number of arguments. %s\n", usage)
+		return opts, fmt.Errorf("wrong number of arguments\n\n%s", usage)
 	}
 	if args[2] != "--" {
-		return opts, fmt.Errorf("use \"--\" to separate listen interface from command. %s\n", usage)
+		return opts, fmt.Errorf("use \"--\" to separate listen interface from command\n\n%s", usage)
 	}
 	opts.Listen = args[1]
 	opts.Command = args[3:]
@@ -201,7 +201,7 @@ func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeServerError(w, 500, fmt.Sprintf("unable to read %s response header\n", name))
 			return
 		}
-		w.Header().Add(entry.Name(), string(value))
+		w.Header().Add(name, string(value))
 	}
 
 	// response/body
