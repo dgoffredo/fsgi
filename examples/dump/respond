@@ -1,0 +1,9 @@
+#!/bin/sh
+
+exec >response/body
+
+find request/ -type f | while read -r f; do
+  echo "$f"
+  cat "$f"
+  printf '\n\n'
+done

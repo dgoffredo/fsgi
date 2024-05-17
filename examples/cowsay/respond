@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# Respond with bovine wisdom.
+fortune | cowsay >response/body
+
+# Reflect the request's nonstandard headers.
+find request/headers -name 'X-*' | while read -r header; do
+  name=$(basename "$header")
+  printf 'You said: ' >response/headers/"$name"
+  cat <"$header" >>response/headers/"$name" 
+done
