@@ -144,6 +144,7 @@ func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	io.Copy(body, r.Body)
+	body.Close()
 
 	// The "request/" directory is ready.
 	// Create the "response/" directory and its subdirectories, and then invoke
