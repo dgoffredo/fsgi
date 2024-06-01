@@ -212,6 +212,7 @@ func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			mimeType, err := sniffContentType(bodyFile)
 			if err != nil {
 				writeServerError(w, 500, fmt.Sprintf("unable to determine Content-Type: %v", err))
+				bodyFile.Close()
 				return
 			}
 			w.Header().Set("Content-Type", mimeType)
