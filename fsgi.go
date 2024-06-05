@@ -160,9 +160,9 @@ func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	child := exec.Command(h.Command[0], h.Command[1:]...)
 	child.Dir = dir
-	err = child.Run()
+	output, err := child.CombinedOutput()
 	if err != nil {
-		writeServerError(w, 502, fmt.Sprintf("request handler failed: %v\n", err))
+		writeServerError(w, 502, fmt.Sprintf("request handler failed: %v\n\n\n%s", err, string(output)))
 		return
 	}
 
