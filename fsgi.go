@@ -43,10 +43,10 @@ func parseCommandLine(args []string) (options, error) {
 	usage := "usage: <listen> -- <command> [<arg> ...]"
 	// <server> <listen> "--" <command> [<arg> ... ]
 	if len(args) < 4 {
-		return opts, fmt.Errorf("wrong number of arguments. %s\n", usage)
+		return opts, fmt.Errorf("wrong number of arguments\n\n%s", usage)
 	}
 	if args[2] != "--" {
-		return opts, fmt.Errorf("use \"--\" to separate listen interface from command. %s\n", usage)
+		return opts, fmt.Errorf("use \"--\" to separate listen interface from command\n\n%s", usage)
 	}
 	opts.Listen = args[1]
 	opts.Command = args[3:]
@@ -144,6 +144,7 @@ func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	io.Copy(body, r.Body)
+	body.Close()
 
 	// The "request/" directory is ready.
 	// Create the "response/" directory and its subdirectories, and then invoke
@@ -201,20 +202,38 @@ func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeServerError(w, 500, fmt.Sprintf("unable to read %s response header\n", name))
 			return
 		}
-		w.Header().Add(entry.Name(), string(value))
+		w.Header().Add(name, string(value))
 	}
 
 	// response/body
 	bodyFile, err := os.Open(filepath.Join(rDir, "body"))
 	if err == nil {
+		if w.Header().Values("Content-Type") == nil {
+			mimeType, err := sniffContentType(bodyFile)
+			if err != nil {
+				writeServerError(w, 500, fmt.Sprintf("unable to determine Content-Type: %v", err))
+				bodyFile.Close()
+				return
+			}
+			w.Header().Set("Content-Type", mimeType)
+		}
 		w.WriteHeader(status)
 		io.Copy(w, bodyFile)
+		bodyFile.Close()
 	} else if errors.Is(err, os.ErrNotExist) {
 		w.WriteHeader(status)
 	} else {
 		writeServerError(w, 500, "unable to read response/body file\n")
 		return
 	}
+}
+
+func sniffContentType(body io.ReadSeeker) (string, error) {
+	var buf [512]byte
+	n, _ := io.ReadFull(body, buf[:])
+	mimeType := http.DetectContentType(buf[:n])
+	_, err := body.Seek(0, io.SeekStart)
+	return mimeType, err
 }
 
 func writeServerError(w http.ResponseWriter, status int, message string) {
