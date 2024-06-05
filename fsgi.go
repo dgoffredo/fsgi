@@ -21,7 +21,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	workDir, err := os.MkdirTemp("", "")
+	workDir, err := os.MkdirTemp("", "fsgi.")
 	if err != nil {
 		log.Fatal(err)
 	}
